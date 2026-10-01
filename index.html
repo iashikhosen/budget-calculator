@@ -12,7 +12,7 @@
             --surface-bg: #1e293b;
             --card-bg: #303e5a;
             --text-main: #f8fafc;
-            --text-muted: #cbd5e1; /* লেখার কালার আরেকটু সাদা ও রিডেবল করা হয়েছে */
+            --text-muted: #cbd5e1;
             --border-color: #475569;
             --accent-yellow: #f59e0b;
         }
@@ -166,9 +166,18 @@
             opacity: 0.6;
         }
 
-        .input-group.disabled-group label {
-            color: #475569;
+        /* Computed / read-only output field */
+        input[readonly] {
+            background: rgba(15, 23, 42, 0.7);
+            color: var(--accent-yellow);
+            font-weight: 700;
+            border-color: #334155;
+            cursor: default;
         }
+        input[readonly]:focus { border-color: #334155; }
+
+        .input-group.disabled-group label { color: #475569; }
+        .input-group.computed-group label { color: var(--accent-yellow); }
 
         /* Workspace Styling */
         .workspace {
@@ -193,10 +202,10 @@
             background: #303e5a;
             border: 1px solid var(--border-color);
             border-radius: 10px;
-            padding: 14px;
+            padding: 18px;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
+            justify-content: flex-start;
         }
 
         .card-header {
@@ -205,40 +214,73 @@
             text-transform: uppercase;
             letter-spacing: 0.8px;
             color: var(--text-muted);
-            margin-bottom: 10px;
+            margin-bottom: 16px;
         }
 
         .breakdown-list {
             display: flex;
             flex-direction: column;
-            gap: 8px;
+            gap: 8px; /* Balanced spacing */
             font-size: 14px;
         }
 
-        /* টোটাল এবং টেক-হোম বাদ দিয়ে শুধু উপরের আইটেমগুলোর নিচে বর্ডার দেওয়া হয়েছে */
-        .breakdown-item{ 
+        /* Clean item styling - NO BORDERS */
+        .breakdown-item { 
             display: flex; 
             justify-content: space-between; 
             align-items: center; 
             color: var(--text-muted); 
-            padding-bottom: 6px;
+            padding: 4px 0;
         }
-      .breakdown-item:not(:last-child) {
 
-    border-bottom: 1px solid #ddd;
-}
-
-        .breakdown-item strong { color: #fff; }
+        .breakdown-item strong { 
+            color: #fff; 
+            font-weight: 600;
+        }
         
-        .breakdown-item.highlight {
-            border-top: 1px dashed #fff;
-            border-bottom: none; /* টোটাল এর নিচে কোনো বর্ডার থাকবে না */
-            padding-top: 8px;
-            padding-bottom: 0px;
+        /* Highlight for base work cost - subtle blue background */
+        .breakdown-item.workcost-highlight {
+            background: rgba(56, 189, 248, 0.15); /* 15% opacity of sky-blue */
+            padding: 10px 12px;
+            border-radius: 6px;
             margin-top: 4px;
-            font-size: 14px;
+        }
+        .breakdown-item.workcost-highlight span {
+            color: #f8fafc; /* Brighter label text */
+            font-weight: 600;
+        }
+        .breakdown-item.workcost-highlight strong {
             color: #fff;
             font-weight: 700;
+        }
+
+        /* Highlight for total fees - subtle yellow background */
+        .breakdown-item.fees-highlight {
+            background: rgba(245, 158, 11, 0.15); /* 15% opacity of accent-yellow */
+            padding: 10px 12px;
+            border-radius: 6px;
+            margin-top: 4px;
+        }
+        .breakdown-item.fees-highlight span {
+            color: #f8fafc; /* Brighter label text */
+            font-weight: 600;
+        }
+
+        /* Highlight for final total - stronger background */
+        .breakdown-item.highlight {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 12px 12px;
+            border-radius: 6px;
+            margin-top: 4px;
+            font-size: 15px;
+            color: #fff;
+            font-weight: 700;
+        }
+
+        /* Center the take-home list vertically to avoid empty gap */
+        #takeHomeCard .breakdown-list {
+            flex: 1;
+            justify-content: center;
         }
 
         /* Message Box */
@@ -346,6 +388,18 @@
             </div>
         </div>
 
+        <!-- Calculation Basis Toggle (Upwork + Hourly only) -->
+        <div class="toggle-box" id="calcBasisToggleBox" onclick="triggerBasisToggle()">
+            <div class="toggle-row">
+                <span class="toggle-label" id="basisLabelText">By Client Budget</span>
+                <label class="switch">
+                    <input type="checkbox" id="basisToggle" checked>
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="toggle-hint" id="basisHintText">💡 Enter budget → get hours</div>
+        </div>
+
         <!-- Fee Mode Toggle -->
         <div class="toggle-box" id="feeModeToggleBox" onclick="triggerModeToggle()">
             <div class="toggle-row">
@@ -365,7 +419,17 @@
                 <input type="number" id="hourlyRate" value="15" step="0.5" oninput="saveAndCalculate()">
             </div>
 
-            <div class="input-group">
+            <div class="input-group" id="hoursInputGroup" style="display:none;">
+                <label>Hours</label>
+                <input type="number" id="workHours" value="10" step="1" min="0" oninput="saveAndCalculate()">
+            </div>
+
+            <div class="input-group" id="minutesInputGroup" style="display:none;">
+                <label>Minutes</label>
+                <input type="number" id="workMinutes" value="0" step="5" min="0" max="59" oninput="saveAndCalculate()">
+            </div>
+
+            <div class="input-group" id="budgetInputGroup">
                 <label id="budgetLabel">Client Budget ($)</label>
                 <input type="number" id="totalBudget" value="120" step="1" oninput="saveAndCalculate()">
             </div>
@@ -410,19 +474,24 @@
 
 <script>
     let currentPlatform = 'upwork';
-    
+
     let platformModes = {
         upwork: true,
         fiverr: false
     };
+
+    /* ---------------- Persistence ---------------- */
 
     function saveSettings() {
         const settings = {
             platform: currentPlatform,
             platformModes: platformModes,
             jobTypeHourly: document.getElementById('jobTypeToggle').checked,
+            basisByHours: !document.getElementById('basisToggle').checked,
             hourlyRate: document.getElementById('hourlyRate').value,
-            totalBudget: document.getElementById('totalBudget').value
+            totalBudget: document.getElementById('totalBudget').value,
+            workHours: document.getElementById('workHours').value,
+            workMinutes: document.getElementById('workMinutes').value
         };
         localStorage.setItem('calc_studio_settings', JSON.stringify(settings));
     }
@@ -433,16 +502,25 @@
             try {
                 const settings = JSON.parse(saved);
                 currentPlatform = settings.platform || 'upwork';
-                if(settings.platformModes) platformModes = settings.platformModes;
-                document.getElementById('jobTypeToggle').checked = settings.jobTypeHourly !== undefined ? settings.jobTypeHourly : true;
+                if (settings.platformModes) platformModes = settings.platformModes;
+
+                document.getElementById('jobTypeToggle').checked =
+                    settings.jobTypeHourly !== undefined ? settings.jobTypeHourly : true;
+                document.getElementById('basisToggle').checked = settings.basisByHours ? false : true;
                 document.getElementById('hourlyRate').value = settings.hourlyRate || '15';
                 document.getElementById('totalBudget').value = settings.totalBudget || '120';
-            } catch(e) {
+                document.getElementById('workHours').value =
+                    (settings.workHours !== undefined && settings.workHours !== '') ? settings.workHours : '10';
+                document.getElementById('workMinutes').value =
+                    (settings.workMinutes !== undefined && settings.workMinutes !== '') ? settings.workMinutes : '0';
+            } catch (e) {
                 console.error("Failed to parse settings", e);
             }
         }
         applyPlatformUI();
     }
+
+    /* ---------------- Platform ---------------- */
 
     function switchPlatform(platform) {
         currentPlatform = platform;
@@ -455,55 +533,95 @@
 
         document.getElementById('upworkTab').className = `tab-btn ${isUpwork ? 'active upwork' : ''}`;
         document.getElementById('fiverrTab').className = `tab-btn ${!isUpwork ? 'active fiverr' : ''}`;
-        
+
         const brandColor = isUpwork ? 'var(--primary-upwork)' : 'var(--primary-fiverr)';
-        
+
         document.getElementById('copyBtn').style.background = brandColor;
         document.getElementById('earningsHeader').style.color = brandColor;
-        document.getElementById('takeHomeCard').style.borderColor = isUpwork ? 'rgba(20, 168, 0, 0.4)' : 'rgba(29, 191, 115, 0.4)';
+        document.getElementById('takeHomeCard').style.borderColor =
+            isUpwork ? 'rgba(20, 168, 0, 0.4)' : 'rgba(29, 191, 115, 0.4)';
 
-        const typeToggleBox = document.getElementById('typeToggleBox');
+        if (!isUpwork) {
+            document.getElementById('modeToggle').checked = false;
+        } else {
+            document.getElementById('modeToggle').checked = platformModes['upwork'];
+        }
+
+        refreshSidebarState();
+    }
+
+    /* ---------------- Sidebar state (single source of truth) ---------------- */
+
+    function refreshSidebarState() {
+        const isUpwork = currentPlatform === 'upwork';
+        const isHourly = document.getElementById('jobTypeToggle').checked;
+        const hoursMode = isUpwork && isHourly && !document.getElementById('basisToggle').checked;
+
+        /* Job type toggle */
+        document.getElementById('typeToggleBox').style.display = isUpwork ? 'flex' : 'none';
+        document.getElementById('toggleLabelText').innerText = isHourly ? 'Hourly Job' : 'Fixed Job';
+
+        /* Calculation basis toggle */
+        document.getElementById('calcBasisToggleBox').style.display = (isUpwork && isHourly) ? 'flex' : 'none';
+
+        const basisLabel = document.getElementById('basisLabelText');
+        const basisHint = document.getElementById('basisHintText');
+        if (hoursMode) {
+            basisLabel.innerText = 'By Hours Worked';
+            basisHint.innerText = '💡 Enter hours → get client total';
+            basisHint.style.color = 'var(--accent-yellow)';
+        } else {
+            basisLabel.innerText = 'By Client Budget';
+            basisHint.innerText = '💡 Enter budget → get hours';
+            basisHint.style.color = 'var(--primary-fiverr)';
+        }
+
+        /* Hourly rate availability */
+        setHourlyRateDisabled(!isHourly);
+
+        /* Hours / minutes inputs */
+        document.getElementById('hoursInputGroup').style.display = hoursMode ? 'flex' : 'none';
+        document.getElementById('minutesInputGroup').style.display = hoursMode ? 'flex' : 'none';
+
+        /* Budget field becomes a computed output in hours mode */
+        setBudgetReadonly(hoursMode);
+        document.getElementById('budgetLabel').innerText = hoursMode ? 'Client Total ($)' : 'Client Budget ($)';
+
+        /* Fee mode toggle */
         const feeModeBox = document.getElementById('feeModeToggleBox');
         const modeToggle = document.getElementById('modeToggle');
+        const modeLabel = document.getElementById('modeLabelText');
+        const modeHint = document.getElementById('modeHintText');
 
-        if(!isUpwork) {
-            typeToggleBox.style.display = 'none';
-            setHourlyRateDisabled(true);
-
+        if (!isUpwork) {
             feeModeBox.classList.add('disabled-box');
-            modeToggle.checked = false; 
-            document.getElementById('modeLabelText').innerText = 'Standard Fee';
-            document.getElementById('modeHintText').innerText = '💡 Client will pay fee (Default)';
-            document.getElementById('modeHintText').style.color = 'var(--text-muted)';
+            modeLabel.innerText = 'Standard Fee';
+            modeHint.innerText = '💡 Client will pay fee (Default)';
+            modeHint.style.color = 'var(--text-muted)';
+        } else if (hoursMode) {
+            feeModeBox.classList.add('disabled-box');
+            modeLabel.innerText = 'Fee Added On Top';
+            modeHint.innerText = '💡 Total = work cost + platform fees';
+            modeHint.style.color = 'var(--accent-yellow)';
         } else {
-            typeToggleBox.style.display = 'flex';
             feeModeBox.classList.remove('disabled-box');
-            modeToggle.checked = platformModes['upwork'];
-            
-            handleTypeToggleUI();
-            handleModeToggleUI();
+            if (modeToggle.checked) {
+                modeLabel.innerText = 'Included Fee (Active)';
+                modeHint.innerText = '💡 Client will not pay fee';
+                modeHint.style.color = 'var(--primary-upwork)';
+            } else {
+                modeLabel.innerText = 'Excluded Fee (Active)';
+                modeHint.innerText = '💡 Client will pay fee';
+                modeHint.style.color = 'var(--accent-yellow)';
+            }
         }
-    }
-
-    function triggerTypeToggle() {
-        if (currentPlatform !== 'upwork') return;
-        const toggle = document.getElementById('jobTypeToggle');
-        toggle.checked = !toggle.checked;
-        handleTypeToggleUI();
-        saveAndCalculate();
-    }
-
-    function handleTypeToggleUI() {
-        const isHourly = document.getElementById('jobTypeToggle').checked;
-        document.getElementById('toggleLabelText').innerText = isHourly ? 'Hourly Job' : 'Fixed Job';
-        setHourlyRateDisabled(!isHourly);
     }
 
     function setHourlyRateDisabled(isDisabled) {
         const rateInput = document.getElementById('hourlyRate');
         const rateGroup = document.getElementById('rateInputGroup');
         rateInput.disabled = isDisabled;
-        
+
         if (isDisabled) {
             rateGroup.classList.add('disabled-group');
         } else {
@@ -511,33 +629,52 @@
         }
     }
 
+    function setBudgetReadonly(isReadonly) {
+        const budgetInput = document.getElementById('totalBudget');
+        const budgetGroup = document.getElementById('budgetInputGroup');
+        budgetInput.readOnly = isReadonly;
+
+        if (isReadonly) {
+            budgetGroup.classList.add('computed-group');
+        } else {
+            budgetGroup.classList.remove('computed-group');
+        }
+    }
+
+    /* ---------------- Toggle handlers ---------------- */
+
+    function triggerTypeToggle() {
+        if (currentPlatform !== 'upwork') return;
+        const toggle = document.getElementById('jobTypeToggle');
+        toggle.checked = !toggle.checked;
+        refreshSidebarState();
+        saveAndCalculate();
+    }
+
+    function triggerBasisToggle() {
+        if (currentPlatform !== 'upwork') return;
+        if (!document.getElementById('jobTypeToggle').checked) return;
+        const toggle = document.getElementById('basisToggle');
+        toggle.checked = !toggle.checked;
+        refreshSidebarState();
+        saveAndCalculate();
+    }
+
     function triggerModeToggle() {
         if (currentPlatform === 'fiverr') return;
+
+        const isHourly = document.getElementById('jobTypeToggle').checked;
+        const hoursMode = isHourly && !document.getElementById('basisToggle').checked;
+        if (hoursMode) return; // disabled while calculating by hours
 
         const toggle = document.getElementById('modeToggle');
         toggle.checked = !toggle.checked;
         platformModes['upwork'] = toggle.checked;
-        handleModeToggleUI();
+        refreshSidebarState();
         saveAndCalculate();
     }
 
-    function handleModeToggleUI() {
-        if (currentPlatform === 'fiverr') return;
-
-        const isIncluded = document.getElementById('modeToggle').checked;
-        const modeLabel = document.getElementById('modeLabelText');
-        const modeHint = document.getElementById('modeHintText');
-
-        if (isIncluded) {
-            modeLabel.innerText = 'Included Fee (Active)';
-            modeHint.innerText = '💡 Client will not pay fee';
-            modeHint.style.color = 'var(--primary-upwork)';
-        } else {
-            modeLabel.innerText = 'Excluded Fee (Active)';
-            modeHint.innerText = '💡 Client will pay fee';
-            modeHint.style.color = 'var(--accent-yellow)';
-        }
-    }
+    /* ---------------- Calculation ---------------- */
 
     function saveAndCalculate() {
         saveSettings();
@@ -545,38 +682,60 @@
     }
 
     function performCalculation() {
-        const isHourly = document.getElementById('jobTypeToggle').checked && currentPlatform === 'upwork';
-        const isIncluded = currentPlatform === 'upwork' ? document.getElementById('modeToggle').checked : false;
+        const isUpwork = currentPlatform === 'upwork';
+        const isHourly = isUpwork && document.getElementById('jobTypeToggle').checked;
+        const isHoursMode = isHourly && !document.getElementById('basisToggle').checked;
+        const isIncluded = isUpwork && !isHoursMode && document.getElementById('modeToggle').checked;
+
         const rate = parseFloat(document.getElementById('hourlyRate').value) || 0;
-        const budget = parseFloat(document.getElementById('totalBudget').value) || 0;
+        let budget = parseFloat(document.getElementById('totalBudget').value) || 0;
 
         let workCost = 0, clientFees = 0, oneTimeFee = 0, grandTotal = 0;
         let hours = 0, minutes = 0;
-        let freelancerFeeRate = currentPlatform === 'upwork' ? 0.10 : 0.20;
+        const freelancerFeeRate = isUpwork ? 0.10 : 0.20;
 
-        if (currentPlatform === 'upwork') {
+        if (isUpwork) {
             oneTimeFee = 9.99;
             const hourlyFeeRate = 0.46;
 
-            if (isHourly) {
+            if (isHoursMode) {
+                /* ---- By Hours Worked: rate + hours + minutes → client total ---- */
+                const rawH = parseFloat(document.getElementById('workHours').value) || 0;
+                const rawM = parseFloat(document.getElementById('workMinutes').value) || 0;
+
+                const totalMinutes = Math.max(0, Math.round(rawH * 60 + rawM));
+                hours = Math.floor(totalMinutes / 60);
+                minutes = totalMinutes % 60;
+                const decimalHours = totalMinutes / 60;
+
+                workCost = decimalHours * rate;
+                clientFees = decimalHours * hourlyFeeRate;
+                grandTotal = workCost + clientFees + oneTimeFee;
+
+                /* Push the computed total back into the (read-only) budget field */
+                document.getElementById('totalBudget').value = grandTotal.toFixed(2);
+                budget = grandTotal;
+
+            } else if (isHourly) {
                 const hourlyTotal = rate + hourlyFeeRate;
+
                 if (isIncluded) {
                     const remainingBudget = Math.max(0, budget - oneTimeFee);
-                    const decimalHours = remainingBudget / hourlyTotal;
+                    const decimalHours = hourlyTotal > 0 ? remainingBudget / hourlyTotal : 0;
                     hours = Math.floor(decimalHours);
                     minutes = Math.floor((decimalHours - hours) * 60);
 
-                    workCost = (hours + minutes/60) * rate;
-                    clientFees = (hours + minutes/60) * hourlyFeeRate;
+                    workCost = (hours + minutes / 60) * rate;
+                    clientFees = (hours + minutes / 60) * hourlyFeeRate;
                     grandTotal = workCost + clientFees + oneTimeFee;
                 } else {
-                    hours = Math.floor(budget / rate);
-                    minutes = Math.floor(((budget / rate) - hours) * 60);
+                    hours = rate > 0 ? Math.floor(budget / rate) : 0;
+                    minutes = rate > 0 ? Math.floor(((budget / rate) - hours) * 60) : 0;
                     workCost = budget;
-                    clientFees = (hours + minutes/60) * hourlyFeeRate;
+                    clientFees = (hours + minutes / 60) * hourlyFeeRate;
                     grandTotal = workCost + clientFees + oneTimeFee;
                 }
-            } else { 
+            } else {
                 if (isIncluded) {
                     workCost = Math.max(0, (budget - oneTimeFee) / 1.05);
                     clientFees = workCost * 0.05;
@@ -587,7 +746,7 @@
                     grandTotal = workCost + clientFees + oneTimeFee;
                 }
             }
-        } else { 
+        } else {
             oneTimeFee = 0;
             workCost = budget;
             clientFees = (workCost * 0.055) + 2.50;
@@ -596,42 +755,68 @@
 
         const freelancerFee = workCost * freelancerFeeRate;
         const netEarnings = workCost - freelancerFee;
+        const totalFees = clientFees + oneTimeFee;  // Sum of platform fees + one-time fee
 
-        // Proposal Message Text
-        let msg = `Hi [Client's Name],\n\n`;
-        if (isHourly) {
+        /* ---------- Proposal Message (no greeting) ---------- */
+        let msg = '';
+
+        if (isHoursMode) {
+            msg += `Here is the cost breakdown for ${hours}h ${minutes}m of work at $${rate}/hr:\n\n`;
+            msg += `• Work Time: ${hours} Hours ${minutes} Minutes\n`;
+            msg += `• Work Cost ($${rate}/hr): $${workCost.toFixed(2)}\n`;
+            msg += `• Upwork Fees & Taxes: $${clientFees.toFixed(2)}\n`;
+            msg += `• One-Time Contract Fee: $${oneTimeFee}\n`;
+            msg += `• Total Estimated Checkout: $${grandTotal.toFixed(2)}\n\n`;
+            msg += `Looking forward to starting!`;
+        } else if (isHourly) {
             msg += `To keep your total expense strictly within $${budget}, here is the breakdown for ${hours}h ${minutes}m of work:\n\n`;
             msg += `• Work Time: ${hours} Hours and ${minutes} Minutes\n`;
             msg += `• Work Cost ($${rate}/hr): $${workCost.toFixed(2)}\n`;
             msg += `• Upwork Fees & Taxes: $${clientFees.toFixed(2)}\n`;
             msg += `• One-Time Contract Fee: $${oneTimeFee}\n`;
             msg += `• Total Estimated Checkout: $${grandTotal.toFixed(2)}\n\n`;
-            msg += isIncluded ? `This keeps your final bill safely within $${budget}.` : `Your total payment will be $${grandTotal.toFixed(2)}.`;
+            msg += isIncluded
+                ? `This keeps your final bill safely within $${budget}.`
+                : `Your total payment will be $${grandTotal.toFixed(2)}.`;
         } else {
             msg += `To set up our project offer, here is the breakdown:\n\n`;
             msg += `• Project Offer Price: $${workCost.toFixed(2)}\n`;
             msg += `• Estimated Platform Fees: $${clientFees.toFixed(2)}\n`;
-            if(oneTimeFee > 0) msg += `• One-Time Contract Fee: $${oneTimeFee}\n`;
+            if (oneTimeFee > 0) msg += `• One-Time Contract Fee: $${oneTimeFee}\n`;
             msg += `• Total Out-of-Pocket Expense: $${grandTotal.toFixed(2)}\n\n`;
             msg += `Looking forward to starting!`;
         }
 
         document.getElementById('clientMessageArea').value = msg;
 
-        // Client UI Output
+        /* ---------- Client UI Output ---------- */
         let clientHTML = '';
-        if(isHourly) clientHTML += `<div class="breakdown-item"><span>Total Duration:</span> <strong>${hours}h ${minutes}m</strong></div>`;
-        clientHTML += `<div class="breakdown-item"><span>Base Work Cost:</span> <strong>$${workCost.toFixed(2)}</strong></div>`;
+        if (isHourly) {
+            clientHTML += `<div class="breakdown-item"><span>Total Duration:</span> <strong>${hours}h ${minutes}m</strong></div>`;
+        }
+        
+        // Base Work Cost with blue highlight
+        clientHTML += `<div class="breakdown-item workcost-highlight"><span>Base Work Cost:</span> <strong>$${workCost.toFixed(2)}</strong></div>`;
+        
         clientHTML += `<div class="breakdown-item"><span>Platform Fees:</span> <strong style="color: var(--accent-yellow);">$${clientFees.toFixed(2)}</strong></div>`;
-        if(oneTimeFee > 0) clientHTML += `<div class="breakdown-item"><span>One-Time Fee:</span> <strong>$${oneTimeFee.toFixed(2)}</strong></div>`;
+        
+        if (oneTimeFee > 0) {
+            clientHTML += `<div class="breakdown-item"><span>One-Time Fee:</span> <strong>$${oneTimeFee.toFixed(2)}</strong></div>`;
+        }
+        
+        // Combined total of platform fees + one-time fee with yellow highlight
+        clientHTML += `<div class="breakdown-item fees-highlight"><span>Total Fees (Platform + One-Time):</span> <strong style="color: var(--accent-yellow);">$${totalFees.toFixed(2)}</strong></div>`;
+        
+        // Final total with white highlight
         clientHTML += `<div class="breakdown-item highlight"><span>Client Total:</span> <strong>$${grandTotal.toFixed(2)}</strong></div>`;
+        
         document.getElementById('clientBreakdownList').innerHTML = clientHTML;
 
-        // Freelancer UI Output
+        /* ---------- Freelancer UI Output ---------- */
         let freeHTML = '';
         freeHTML += `<div class="breakdown-item"><span>Gross Earnings:</span> <strong>$${workCost.toFixed(2)}</strong></div>`;
-        freeHTML += `<div class="breakdown-item"><span>Service Fee (${freelancerFeeRate*100}%):</span> <strong style="color: var(--accent-yellow);">-$${freelancerFee.toFixed(2)}</strong></div>`;
-        freeHTML += `<div class="breakdown-item highlight"><span>Your Take-Home:</span> <strong style="color:${currentPlatform === 'upwork' ? 'var(--primary-upwork)' : 'var(--primary-fiverr)'};">$${netEarnings.toFixed(2)}</strong></div>`;
+        freeHTML += `<div class="breakdown-item"><span>Service Fee (${freelancerFeeRate * 100}%):</span> <strong style="color: var(--accent-yellow);">-$${freelancerFee.toFixed(2)}</strong></div>`;
+        freeHTML += `<div class="breakdown-item highlight"><span>Your Take-Home:</span> <strong style="color:${isUpwork ? 'var(--primary-upwork)' : 'var(--primary-fiverr)'};">$${netEarnings.toFixed(2)}</strong></div>`;
         document.getElementById('freelancerBreakdownList').innerHTML = freeHTML;
     }
 
@@ -651,5 +836,6 @@
     };
 </script>
 
+<script type="module" src="https://static.cloudflareinsights.com/beacon.min.js/v31edd6df95cf4e85bb4c19e7a9bdbcba1788362987495" integrity="sha512-iIg7k2xntmwu6/uSb5tpc/hySgZc4eoL31yB29W6tJFo2akwjPWcEqnCEdJvGexCL0KEQwVYv5BlowfhVz26hg==" data-cf-beacon='{"version":"2024.11.0","token":"41708f0e04d84fafb072a857ce3e8889","r":1,"spa":2}' crossorigin="anonymous"></script>
 </body>
 </html>
